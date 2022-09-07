@@ -1,5 +1,11 @@
 # cypress-v10-preserve-cookie-example
 
+> Cypress.Cookies.preserveOnce for Cypress v10 example
+
+Uses plugin [cypress-v10-preserve-cookie](https://github.com/bahmutov/cypress-v10-preserve-cookie)
+
+- 📺 [How To Preserve Cookie Once In Cypress v10](https://youtu.be/b8aoVh6IdCg)
+
 ## Installation
 
 ```shell

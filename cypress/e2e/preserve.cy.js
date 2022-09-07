@@ -1,5 +1,6 @@
+/// <reference types="cypress-v10-preserve-cookie" />
 // @ts-check
-
+import 'cypress-v10-preserve-cookie'
 import { loginUser } from './utils'
 
 // watch the video "Stay Logged In During Tests By Preserving A Cookie"
@@ -15,7 +16,7 @@ describe('log in once', () => {
   })
 
   beforeEach(() => {
-    Cypress.Cookies.preserveOnce('connect.sid')
+    cy.preserveCookieOnce('connect.sid')
   })
 
   it('is logged in (1st test)', function () {
