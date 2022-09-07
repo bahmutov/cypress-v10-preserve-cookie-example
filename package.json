@@ -1,7 +1,7 @@
 {
   "name": "cypress-v10-preserve-cookie-example",
   "version": "1.0.0",
-  "description": "Cypress.Cookies.preserveOnce for Cypress v10",
+  "description": "Cypress.Cookies.preserveOnce for Cypress v10 example",
   "private": true,
   "scripts": {
     "test": "cypress run",
@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "cypress": "10.7.0",
+    "cypress-v10-preserve-cookie": "^1.0.0",
     "prettier": "^2.4.1",
     "start-server-and-test": "^1.14.0",
     "stop-only": "^3.1.2"
