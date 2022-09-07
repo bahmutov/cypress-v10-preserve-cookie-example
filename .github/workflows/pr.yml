@@ -1,0 +1,143 @@
+name: pr
+# on pull request, determine changed or added Cypress specs
+# if there are any (but not too many), run them first
+# then run all Cypress specs
+# read the blog post
+# https://glebbahmutov.com/blog/faster-ci-feedback/
+on: [pull_request]
+jobs:
+  test-changed-specs:
+    runs-on: ubuntu-20.04
+    steps:
+      # https://github.com/actions/checkout
+      - name: Check out main branch 🛎
+        uses: actions/checkout@v2
+        with:
+          # need to fetch info about all branches
+          # to determine the changed spec files
+          fetch-depth: 0
+
+      - name: List changed files 🗂
+        # should we get the branch names from the PR?
+        # be careful! if there are lots of changed files
+        # this will paginate the results and will run into troubles
+        run: npx find-cypress-specs --branch main
+
+      - name: List changed specs ✨
+        id: list-changed-specs
+        run: |
+          specs=$(npx find-cypress-specs --branch main)
+          n=$(npx find-cypress-specs --branch main --count)
+
+          echo "Changed and added Cypress specs"
+          echo ${specs}
+          echo "number of added or changed Cypress specs ${n}"
+
+          # output the number of specs and the specs list
+          echo "::set-output name=specsN::${n}"
+          echo "::set-output name=specs::${specs}"
+
+      # run utility services in the background
+      # using docker-compose (see docker-compose.yml file)
+      - name: Run docker-compose 🐳
+        if: ${{ steps.list-changed-specs.outputs.specsN > 0 && steps.list-changed-specs.outputs.specsN < 5 }}
+        run: docker-compose up -d
+
+      # install dependencies
+      - name: Install dependencies 📦
+        if: ${{ steps.list-changed-specs.outputs.specsN > 0 && steps.list-changed-specs.outputs.specsN < 5 }}
+        uses: cypress-io/github-action@v2
+        with:
+          build: npm run stop-only
+          # just perform install
+          runTests: false
+
+      - name: Start the app 🏁
+        if: ${{ steps.list-changed-specs.outputs.specsN > 0 && steps.list-changed-specs.outputs.specsN < 5 }}
+        run: npm start &
+        env:
+          # for connecting to the Mongo and Redis services
+          # see docker-compose.yml file
+          SESSION_SECRET: SoMeSeCrEtStrInG
+          MONGODB: mongodb://root:rootPass1234@localhost:27017/
+
+      # https://github.com/cypress-io/github-action
+      - name: Run changed Cypress specs first 🌲
+        # it makes sense to run changed specs only if there are a few
+        # otherwise just run all specs in the next step
+        if: ${{ steps.list-changed-specs.outputs.specsN > 0 && steps.list-changed-specs.outputs.specsN < 5 }}
+        uses: cypress-io/github-action@v2
+        with:
+          # we have already installed all dependencies above
+          install: false
+          # the server is running already, but just wait for it
+          wait-on: 'http://localhost:3000'
+          record: true
+          group: '1. Changed specs'
+          spec: ${{ steps.list-changed-specs.outputs.specs }}
+        env:
+          # for recording test results and videos to Cypress Dashboard
+          CYPRESS_RECORD_KEY: ${{secrets.CYPRESS_RECORD_KEY}}
+          # Cypress connects to MongoDB in some tests
+          MONGODB: mongodb://root:rootPass1234@localhost:27017/
+
+  test-http:
+    needs: [test-changed-specs]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out code 🛎
+        uses: actions/checkout@v2
+
+      # run utility services in the background
+      # using docker-compose (see docker-compose.yml file)
+      - name: Run docker-compose
+        run: docker-compose up -d
+
+      # https://github.com/cypress-io/github-action
+      - name: Cypress tests 🧪
+        uses: cypress-io/github-action@v2
+        with:
+          build: npm run stop-only
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          record: true
+          group: '2: All GH Tests (HTTP)'
+        env:
+          # for recording test results and videos to Cypress Dashboard
+          CYPRESS_RECORD_KEY: ${{secrets.CYPRESS_RECORD_KEY}}
+          # for connecting to the Mongo and Redis services
+          # see docker-compose.yml file
+          SESSION_SECRET: SoMeSeCrEtStrInG
+          MONGODB: mongodb://root:rootPass1234@localhost:27017/
+
+  test-https:
+    needs: [test-changed-specs]
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Check out code 🛎
+        uses: actions/checkout@v2
+
+      # run utility services in the background
+      # using docker-compose (see docker-compose.yml file)
+      - name: Run docker-compose
+        run: docker-compose up -d
+        env:
+          HTTPS: true
+
+      # https://github.com/cypress-io/github-action
+      - name: Cypress tests 🧪
+        uses: cypress-io/github-action@v2
+        with:
+          build: npm run stop-only
+          start: npm start
+          # do not wait - let Cypress wait for HTTPS
+          record: true
+          group: '3: All GH Tests (HTTPS)'
+        env:
+          HTTPS: true
+          # for recording test results and videos to Cypress Dashboard
+          CYPRESS_RECORD_KEY: ${{secrets.CYPRESS_RECORD_KEY}}
+          # for connecting to the Mongo and Redis services
+          # see docker-compose.yml file
+          SESSION_SECRET: SoMeSeCrEtStrInG
+          MONGODB: mongodb://root:rootPass1234@localhost:27017/

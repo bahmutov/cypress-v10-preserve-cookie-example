@@ -1,0 +1,188 @@
+# This CircleCI configuration was described in the blog post
+# Get Faster Feedback From Your Cypress Tests Running On CircleCI
+# https://glebbahmutov.com/blog/faster-ci-feedback-on-circleci/
+version: 2.1
+orbs:
+  # https://github.com/cypress-io/circleci-orb
+  cypress: cypress-io/cypress@1.29.0
+
+# if we want to run only some tests on CircleCI, we can call the workflow
+# with parameters, as described in https://glebbahmutov.com/blog/burn-tests-on-circle/
+parameters:
+  # allow running selected tests once or multiple times
+  # using the cypress-grep plugin
+  # https://github.com/cypress-io/cypress-grep
+  GREP:
+    type: string
+    default: ''
+  GREP_TAGS:
+    type: string
+    default: ''
+  BURN:
+    type: integer
+    default: 1
+  # optional spec pattern to pass via "--spec <pattern>"
+  SPEC:
+    type: string
+    default: ''
+  # https://glebbahmutov.com/blog/parallelism-parameter/
+  MACHINES:
+    type: integer
+    default: 1
+  # message to print to the terminal if any
+  MESSAGE:
+    type: string
+    default: ''
+
+executors:
+  with-services:
+    # to run MongoDB and Redis on CircleCI, follow the instructions
+    # https://glebbahmutov.com/blog/testing-mongo-with-cypress/
+    docker:
+      # image used to install source code,
+      # run our server and run Cypress tests
+      - image: cypress/base:16.13.0
+        environment:
+          # for connecting to the Mongo and Redis services
+          MONGODB: mongodb://root:rootPass1234@localhost:27017/
+          SESSION_SECRET: SoMeSeCrEtStrInG
+
+      # image used to run Mongo in a separate container
+      - image: mongo:4.4.5
+        environment:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: rootPass1234
+      # image for running Redis
+      - image: redis:alpine
+
+workflows:
+  some-tests:
+    # runs the Web tests when the user supplies a grep pattern
+    when:
+      or:
+        - << pipeline.parameters.GREP >>
+        - << pipeline.parameters.GREP_TAGS >>
+        - << pipeline.parameters.SPEC >>
+    jobs:
+      # every testing job needs to install dependencies and Cypress
+      - cypress/install:
+          name: Install
+          # to install dependencies, we do not need other services
+          # so let's use the executor close to what the tests will use
+          # https://github.com/cypress-io/circleci-orb/blob/master/docs/executors.md
+          executor: cypress/base-14
+          build: echo "Hello << pipeline.parameters.MESSAGE >>"
+
+      - cypress/run:
+          name: Filtered E2E tests
+          requires:
+            - Install
+          no-workspace: true
+          executor: with-services
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          record: true
+          # since we might pass the MACHINES parameter,
+          # let's always run the tests in parallel mode
+          # Even if there is a single machine, all tests will run
+          # from the longest to the shortest duration
+          parallel: true
+          parallelism: << pipeline.parameters.MACHINES >>
+          group: 'Test grep: << pipeline.parameters.GREP >>'
+          tags: << pipeline.parameters.GREP >>
+          spec: '<< pipeline.parameters.SPEC >>'
+          env: 'grep="<< pipeline.parameters.GREP >>",grepTags=<< pipeline.parameters.GREP_TAGS >>,grepBurn=<< pipeline.parameters.BURN >>'
+
+  build:
+    # do not run all tests if the user is only interested in some of them
+    unless:
+      or:
+        - << pipeline.parameters.GREP >>
+        - << pipeline.parameters.GREP_TAGS >>
+        - << pipeline.parameters.SPEC >>
+    jobs:
+      # every testing job needs to install dependencies and Cypress
+      - cypress/install:
+          name: Install
+          # to install dependencies, we do not need other services
+          # so let's use the executor close to what the tests will use
+          # https://github.com/cypress-io/circleci-orb/blob/master/docs/executors.md
+          executor: cypress/base-14
+
+      # run only the changed Cypress tests if any
+      # and only if we are running in a pull request
+      - cypress/run:
+          name: Run changed Cypress tests
+          executor: with-services
+          requires:
+            - Install
+          post-checkout:
+            - run:
+                name: Stop if not a pull request
+                command: |
+                  if [ -z "$CIRCLE_PULL_REQUEST" ]; then
+                    echo "Not a pull request, exiting..."
+                    circleci-agent step halt
+                  fi
+            - run:
+                name: Stop if no changed specs
+                # also stop if there are too many changed specs
+                command: |
+                  # make sure to NOT fail if there are no changed specs
+                  n=$(git diff --name-only --diff-filter=AMR origin/main | { grep cypress/integration || true; } | wc -l | tr -d ' ')
+                  echo ""
+                  echo "number of added or changed Cypress specs ${n}"
+                  echo ""
+                  if [ ${n} -lt 1 ]; then
+                    echo "No Cypress specs changed, exiting..."
+                    circleci-agent step halt
+                  fi
+
+                  if [ ${n} -gt 4 ]; then
+                    echo "Too many Cypress specs changed, will run them all in the next job..."
+                    circleci-agent step halt
+                  fi
+
+          parallel: true
+          parallelism: << pipeline.parameters.MACHINES >>
+
+          # to "trick" the Orb into NOT installing again
+          # (the dependencies were installed in the Install job)
+          # we use the dummy "install-command"
+          install-command: echo Already installed
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          no-workspace: true
+          command: |
+            # be careful about counting the lines
+            specs=$(npx find-cypress-specs --branch main)
+            n=$(npx find-cypress-specs --branch main --count)
+            echo ""
+            echo "Changed and added ${n} Cypress specs"
+            echo ${specs}
+            echo ""
+
+            if [ ${n} -lt 1 ]; then
+              echo "No Cypress specs changed, exiting..."
+              exit 0
+            fi
+
+            # we have to form the Cypress run command ourselves
+            npx cypress run --record --group "1. Changed specs" --spec ${specs}
+
+      - cypress/run:
+          name: Run all tests
+          executor: with-services
+          # only run all the tests if the changed (if any) specs passed
+          requires:
+            - Install
+            - Run changed Cypress tests
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          record: true
+          # split all specs across 4 machines
+          # https://on.cypress.io/parallelization
+          parallel: true
+          parallelism: 4
+          group: '2. All Circle Tests'
+          no-workspace: true
