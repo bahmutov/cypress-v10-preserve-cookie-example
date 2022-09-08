@@ -42,6 +42,16 @@ $ as-a . npm start
 
 Open the [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Run Cypress
+
+To allow clearing all users from the database, run Cypress with `MONGODB` environment variable too
+
+```shell
+# MONGODB=mongodb://root:rootPass1234@localhost:27017/ npx cypress open
+# or using as-a utility
+$ as-a . npx cypress open
+```
+
 ## About me
 
 - [@bahmutov](https://twitter.com/bahmutov)

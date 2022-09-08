@@ -40,6 +40,7 @@
   },
   "devDependencies": {
     "cypress": "10.7.0",
+    "cypress-if": "^1.7.1",
     "cypress-v10-preserve-cookie": "^1.1.0",
     "prettier": "^2.4.1",
     "start-server-and-test": "^1.14.0",
