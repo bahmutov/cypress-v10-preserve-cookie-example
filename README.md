@@ -1,4 +1,4 @@
-# cypress-v10-preserve-cookie-example
+# cypress-v10-preserve-cookie-example ![cypress version](https://img.shields.io/badge/cypress-10.7.0-brightgreen) ![cypress-v10-preserve-cookie version](https://img.shields.io/badge/cypress--v10--preserve--cookie-1.1.0-brightgreen)
 
 > Cypress.Cookies.preserveOnce for Cypress v10 example
 
